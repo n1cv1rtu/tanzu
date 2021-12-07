@@ -1,0 +1,71 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: installation-scripts
+  namespace: kube-system
+data:
+  wait.sh: |
+    #!/bin/bash
+    # Modify the wait script to suit your node ready logic
+    # E.g. Sleep for 5 mins to allow node to be ready
+    sleep 5m
+
+  install.sh: |
+    #!/bin/bash
+    if [ ! -f /tmp/install/installation-complete.txt ]
+    then
+    # --------- Add your node and OS specific commands that need to be executed -----
+    # --------- All files are located and executed from /tmp/install folder --------
+ 
+    iptables -I INPUT -p tcp -m tcp --dport 42699 -j ACCEPT
+    iptables-save
+
+
+    # ----------- Do not modify the lines below ---------------
+      touch /tmp/install/installation-complete.txt
+    else
+      # Script execution was completed previously. Exit gracefully.
+      exit 0
+    fi
+
+  # Add additonal files to be passwd thru configmap here
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-configure
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: node-configure-job
+  template:
+    metadata:
+      labels:
+        name: node-configure-job
+    spec:
+      hostPID: true
+      containers:
+      - name: tinisubreaper
+        image: whoami6443/node-execution:0.0.3
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: install-script
+          mountPath: /host-install-files
+        - name: host-mount
+          mountPath: /host
+      volumes:
+      - name: install-script
+        configMap:
+          name: installation-scripts
+      - name: host-mount
+        hostPath:
+          path: /tmp/install
+# Use these to control the nodes on which to execute the scripts. 
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
